@@ -4,19 +4,23 @@ module MLP
       opts[:initial_weight] ||= 0.5
       opts[:learning_rate] ||= 1.0
       opts[:structure] ||= [2, 2, 2]
+      opts[:momentum] ||= 0.005
 
       @structure = opts[:structure]
       @learning_rate = opts[:learning_rate]
       @threshold_function = Proc.new { |net| 1 / (1 + Math.exp(-net)) }
       @threshold_function_derivative = Proc.new { |out| out * (1 - out) }
       @initial_weight = opts[:initial_weight]
+      @momentum = opts[:momentum]
 
-      initialize_activation_nodes
+      initialize_nodes
       initialize_weights
+      puts "momentum is #{@momentum}" if @momentum
+      initialize_weight_change if @momentum
     end
 
-    def initialize_activation_nodes
-      @activation_nodes = Array.new(@structure.length) do |n|
+    def initialize_nodes
+      @nodes = Array.new(@structure.length) do |n|
         Array.new(@structure[n], 1.0)
       end
     end
@@ -31,15 +35,25 @@ module MLP
     # To get the weight from input node i to output node j of
     # layer l, @weights[l][i][j]
     def initialize_weights
-      @weights =  Array.new(@structure.length - 1) do |i|
+      @weights = initialize_weight_matrix(@initial_weight)
+    end
+
+    def initialize_weight_matrix(initial_value)
+      weights =  Array.new(@structure.length - 1) do |i|
         origin_nodes = @structure[i]
         target_nodes = @structure[i + 1]
         Array.new(origin_nodes) do |j|
           Array.new(target_nodes) do |k|
-            @initial_weight
+            initial_value
           end
         end
       end
+      weights
+    end
+
+    # Initializes a structure to track last weight changes.
+    def initialize_weight_change
+      @previous_weight_changes = initialize_weight_matrix(0.0)
     end
 
     def calculate_output(input)
@@ -47,18 +61,18 @@ module MLP
       @weights.each_index do |i|
         @structure[i + 1].times do |j|
           sum = 0.0
-          @activation_nodes[i].each_index do |k|
-            sum += (@activation_nodes[i][k] * @weights[i][k][j])
+          @nodes[i].each_index do |k|
+            sum += (@nodes[i][k] * @weights[i][k][j])
           end
-          @activation_nodes[i+1][j] = @threshold_function.call(sum)
+          @nodes[i+1][j] = @threshold_function.call(sum)
         end
       end
-      @activation_nodes.last
+      @nodes.last
     end
 
     def fill_in_input_layer(input)
       input.each_index do |i|
-        @activation_nodes.first[i] = input[i]
+        @nodes.first[i] = input[i]
       end
     end
 
@@ -68,7 +82,7 @@ module MLP
     end
 
     def calculate_error_for_output(expected_output)
-      output_values = @activation_nodes[-1]
+      output_values = @nodes[-1]
       output_error = []
       output_values.each_index do |index|
         output_error << (expected_output[index] - output_values[index]) * @threshold_function_derivative.call(output_values[index])
@@ -78,14 +92,14 @@ module MLP
 
     def calculate_error_for_hidden_layers
       previous_error = @errors[-1]
-      (@activation_nodes.size - 2).downto(1) do |n|
+      (@nodes.size - 2).downto(1) do |n|
         layer_error = []
-        @activation_nodes[n].each_index do |i|
+        @nodes[n].each_index do |i|
           err = 0.0
           @structure[n + 1].times do |j|
             err += previous_error[j] * @weights[n][i][j]
           end
-          layer_error[i] = (@threshold_function_derivative.call(@activation_nodes[n][i]) * err)
+          layer_error[i] = (@threshold_function_derivative.call(@nodes[n][i]) * err)
         end
         previous_error = layer_error
         @errors.unshift(layer_error)
@@ -96,13 +110,21 @@ module MLP
       (@weights.length - 1).downto(0) do |n|
         @weights[n].each_index do |i|
           @weights[n][i].each_index do |j|
-            delta_w = @activation_nodes[n][i] * @errors[n][j]
-            @weights[n][i][j] += @learning_rate * delta_w
+            delta_w = @nodes[n][i] * @errors[n][j]
+            change = @learning_rate * delta_w
+            if @momentum
+              change += @momentum * @previous_weight_changes[n][i][j]
+              @previous_weight_changes[n][i][j] = @weights[n][i][j]
+            end
+            @weights[n][i][j] += change
           end
         end
       end
     end
 
+    # Given an input, and an array of expected
+    # output values of the final layer, update
+    # the weights of the neural net to fit.
     def train(input, expected_output)
       output = calculate_output(input)
       backpropogate(expected_output)
@@ -118,10 +140,11 @@ module MLP
       error
     end
 
-    # Given a data point as an array of attribute values and an array of classes, return
-    # the class predicted by the neural network.
+    # Given a data point as an array of attribute values,
+    # return the index of the output node with the highest activation.
+    # This corresponds to the predicted class.
     def get_predicted_class(input, class_array)
-      output = get_output_of_each_layer(input)[-1]
+      output = calculate_output
       max = output.find_index(output.max)
       class_array[max]
     end

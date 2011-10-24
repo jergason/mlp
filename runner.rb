@@ -22,7 +22,7 @@ require 'ai4r'
 
 
 mlp = MLP::MLP.new({ :structure => [2, 2, 2] })
-3000.times do
+30000.times do
   mlp.train([0, 0], [1, 0])
   mlp.train([1, 1], [0, 1])
   mlp.train([1, 0],  [1, 0])
