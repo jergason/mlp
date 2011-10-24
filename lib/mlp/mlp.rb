@@ -79,6 +79,55 @@ module MLP
       end
     end
 
+    def calculate_output(input)
+      fill_in_input_later(input)
+      @weights.each_index do |i|
+        @structure[i + 1].times do |j|
+          sum = 0.0
+          @activation_nodes[i].each_index do |k|
+            sum += (@activation_nodes[i][k] * @weights[i][k][j]
+          end
+          @activation_nodes[i+1][j] = @threshold_function.call(sum)
+        end
+      end
+    end
+
+    def fill_in_input_later(input)
+      input.each_index do |i|
+        @activation_nodes.first[i] = input[i]
+      end
+    end
+
+    def backpropogate(expected_output)
+      calculate_error_for_output(expected_output)
+      calculate_error_for_hidden_layers
+    end
+
+    def calculate_error_for_output(expected_output)
+      output_values = @activation_nodes[-1]
+      output_error = []
+      output_values.each_index do |index|
+        output_error << (expected_output[index] - output_values[index]) * @threshold_function_derivative.call(output_values[index])
+      end
+      @errors = [output_error]
+    end
+
+    def calculate_error_for_hidden_layers
+      previous_error = @errors[-1]
+      (@activation_nodes.size - 2).downto(1) do |n|
+        layer_error = []
+        @activation_nodes[n].each_index do |i|
+          err = 0.0
+          @structure[n + 1].times do |j|
+            err += previous_error[j] * @weights[n][i][j]
+          end
+          layer_error[i] = (@threshold_function_derivative.call(@activation_nodes[n][i]) * err)
+        end
+        previous_error = layer_error
+        @errors.unshift(layer_error)
+      end
+    end
+
     # Given an array of inputs and a class, update the weights
     # of the mpl.
     #
