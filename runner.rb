@@ -21,7 +21,7 @@ require 'ai4r'
 # end
 
 
-mlp = MLP::MLP.new({ input: 2, output: 2, learning_rate: 0.25 })
+mlp = MLP::MLP.new({ :structure => [2, 2, 2] })
 3000.times do
   mlp.train([0, 0], [1, 0])
   mlp.train([1, 1], [0, 1])
