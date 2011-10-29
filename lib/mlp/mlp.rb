@@ -1,10 +1,13 @@
 module MLP
   class MLP
     def initialize(opts)
-      opts[:initial_weight] ||= 0.5
-      opts[:learning_rate] ||= 1.0
+      # default initial weight is random, but
+      # if someone wants to be fancy and pass in some
+      # parameters we will let them.
+      opts[:initial_weight] ||= Proc.new { |a, b, c| rand }
+      opts[:learning_rate] ||= 0.1
       opts[:structure] ||= [2, 2, 2]
-      opts[:momentum] ||= 0.005
+      opts[:momentum] ||= 0.0001
 
       @structure = opts[:structure]
       @learning_rate = opts[:learning_rate]
@@ -15,7 +18,6 @@ module MLP
 
       initialize_nodes
       initialize_weights
-      puts "momentum is #{@momentum}" if @momentum
       initialize_weight_change if @momentum
     end
 
@@ -23,6 +25,7 @@ module MLP
       @nodes = Array.new(@structure.length) do |n|
         Array.new(@structure[n], 1.0)
       end
+      # binding.pry
     end
 
     #initialize weights matrix
@@ -38,13 +41,13 @@ module MLP
       @weights = initialize_weight_matrix(@initial_weight)
     end
 
-    def initialize_weight_matrix(initial_value)
+    def initialize_weight_matrix(initial_value_function)
       weights =  Array.new(@structure.length - 1) do |i|
         origin_nodes = @structure[i]
         target_nodes = @structure[i + 1]
         Array.new(origin_nodes) do |j|
           Array.new(target_nodes) do |k|
-            initial_value
+            initial_value_function.call(i, j, k)
           end
         end
       end
@@ -53,7 +56,7 @@ module MLP
 
     # Initializes a structure to track last weight changes.
     def initialize_weight_change
-      @previous_weight_changes = initialize_weight_matrix(0.0)
+      @previous_weight_changes = initialize_weight_matrix(Proc.new { |a,b,c| 0.0 })
     end
 
     def calculate_output(input)
@@ -62,7 +65,11 @@ module MLP
         @structure[i + 1].times do |j|
           sum = 0.0
           @nodes[i].each_index do |k|
-            sum += (@nodes[i][k] * @weights[i][k][j])
+            begin
+              sum += (@nodes[i][k] * @weights[i][k][j])
+            rescue NoMethodError => e
+              binding.pry
+            end
           end
           @nodes[i+1][j] = @threshold_function.call(sum)
         end
@@ -71,6 +78,7 @@ module MLP
     end
 
     def fill_in_input_layer(input)
+      # binding.pry
       input.each_index do |i|
         @nodes.first[i] = input[i]
       end
@@ -126,6 +134,7 @@ module MLP
     # output values of the final layer, update
     # the weights of the neural net to fit.
     def train(input, expected_output)
+      # binding.pry
       output = calculate_output(input)
       backpropogate(expected_output)
       update_weights_from_error
